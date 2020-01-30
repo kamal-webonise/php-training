@@ -4,17 +4,16 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $this->loadModel('Ats.AtsLog');
       $this->loadModel('Ats.AtsCredential');
       $this->loadModel('Users.Candidate');
+
+      $this->log('*********** set the operation *******************');
+      // die();
+
       
       $this->cfaCandidateId = $cfaCandidateId = (isset($atsResult['cfa']['cfa_candidate_id']) && !empty($atsResult['cfa']['cfa_candidate_id'])) ? $atsResult['cfa']['cfa_candidate_id']: false;
       $this->rpaCandidateId = $rpaCandidateId = (isset($atsResult['rpa']['rpa_candidate_id']) && !empty($atsResult['rpa']['rpa_candidate_id'])) ? $atsResult['rpa']['rpa_candidate_id']: false;
       
-      // $this->log($atsResult);
-      // $this->log($assessmentCandidateId);
-
+      $this->log($atsResult);
       // die();
-
-      $this->log('*******************generateResultForLumesse entry************************');
-      die();
       
       $atsAssessmentResult = $this->AtsAssessmentCandidate->getATSAssessmentData($atsResult['certificateNumber']);
       // $this->log($atsAssessmentResult);
@@ -31,6 +30,15 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       // $this->Reports->initialize($this);
       $atsCredentials = $this->AtsCredential->getATSCredentials($this->organisationId, $this->productId, $this->atsId);
       $cfaPercentage = $rpaPercentage = null;
+
+      $this->log($this->organisationId);
+      $this->log($this->productId);
+      $this->log($this->atsId);
+      $this->log($atsCredentials);
+      $this->log('**************************');
+      // die();
+
+
 
 
 
@@ -51,6 +59,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $this->log($atsAssessmentResult);
 
       $this->log('percentage =============================');
+      // die();
 
       if ($atsAssessmentResult['AtsAssessmentCandidate']['type'] == CFA_ASSESSMENT_TYPE) {
           $cfaPercentage = $this->Candidate->CfaCandidate->cfaPercentage($assessmentCandidateId);
@@ -66,20 +75,16 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
         $requiredIdsForAssessment = $this->idsForAssessment();
 
         $atsResult['overallResult']['percentageScore'] = $this->Api->calculateOverallPercentage($requiredIdsForAssessment, $atsResult);
-        $resultXMLForDb = $resultXMLForSF = $this->Api->sendAssessmentResult($atsResult, $atsAssessmentResult, $atsCredentials);
+        // $resultXMLForDb = $resultXMLForSF = $this->Api->sendAssessmentResult($atsResult, $atsAssessmentResult, $atsCredentials);
 
-        $this->log($atsResult);
-        die();
-      
 
 
       $this->log('The final ats results check basse path **************************');
 
       $this->log($atsResult);
-      $this->log('base path===========');
+      $this->log('base path');
       $this->log(Configure::read('full_base_url'));
       // die();
-      $this->log('test ============');
 
       
       $talentLinkId = $atsAssessmentResult['AtsAssessmentCandidate']['ats_transactId'];
@@ -89,6 +94,11 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       // die();
       
       $resultTemplateResponse = $this->Api->lumesseResultTemplate($talentLinkId, $atsCredentials);
+      $this->log($resultTemplateResponse);
+      // die();
+
+      $this->log('============= check out ==================');
+      $this->log('==========================');
       
       $this->AtsLog->saveATSLog($resultTemplateResponse, 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
       // die;
@@ -102,22 +112,38 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
         $url = $additionalParameter->assessment_provider_endpoint.'?api_key='.$atsCredentials['AtsCredential']['api_key'];
       }
 
+      $this->log('Before ******************');
       $response = $this->Api->callApi($url, 'POST', $resultTemplateResponse);
 
+      $this->log($response);
+      $this->log('============================');
+
       if($response['http_code'] != 200) {        
-        $this->AtsLog->saveATSLog($response['data'], 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== why =========');
         die();
       }
 
+      $this->log('After *******************');
+
       $responseData = $response['data'];
+      $this->log($responseData);
+
+      // die();
       $responseData = $this->replaceAmpersandByHtmlEntityCode($responseData);
+      $this->log('testoooo 888888**************');
+      $this->log($responseData);
+
       
       try {
         $xmlObject = Xml::build($responseData);
       } catch(Exception $e) {
-        $this->At->AtsLog->saveATSLog($response['data'], 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== why not=========');
         die();
       }
+
+
       $this->AtsLog->saveATSLog($response['data'], 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
       $xmlArray = Xml::toArray($xmlObject);
 
@@ -126,44 +152,32 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $count = 0;
 
       $this->log($questionSet);
+      $this->log($atsCredentials);
+      // $this->log($atsCredentials);
+      // die();
       $getResultsTemplateResponse = 
-      '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-        <soap:Header></soap:Header>
-        <soap:Body>
-          <ws:getResultsTemplateResponse xmlns:ws="http://ws.mrted.com/">
-            <ws:results-template>
-              <questions>';
+      '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.mrted.com/">
+          <soap:Header>
+          <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+            <wsse:UsernameToken wsu:Id="UsernameToken-3" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+            <wsse:Username>'.$atsCredentials['AtsCredential']['ats_username'].'</wsse:Username>
+            <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText">'.$atsCredentials['AtsCredential']['ats_password'].'</wsse:Password>
+            </wsse:UsernameToken>
+            </wsse:Security>
+          </soap:Header> 
+           <soap:Body>
+              <ws:submitResults>
+                 <ws:request-id>'.$atsAssessmentResult['AtsAssessmentCandidate']['ats_transactId'].'</ws:request-id>
+                 <ws:results>
+                    <questions>';
 
       foreach ($questionSet as $key => $value) {
-        $this->log($value['label']);
-        switch($value['label']) {
-          case 'Candidate Score':
-            // $this->log(gettype($responseData));
-            // $this->log($responseData);
-            $this->log('================ candidate score =============');      
-            // die;
-            // $this->log($atsResult['overallResult']['score']);
-            $temp = '
-                <ws:question>
-                  <id>'.$value["id"].'</id>
-                  <label>'.$value["label"].'</label>
-                  <answer>
-                    <values>
-                      <value>'.$atsResult["overallResult"]["score"].'</value>
-                    </values>
-                  </answer>
-                </ws:question>';
+        $labelName = strtolower($value['label']);
+        $labelName = preg_replace('/[\t\n\r\s]+/', '', $labelName);
+        $labelName = str_replace(' ', '', $labelName);
 
-            $getResultsTemplateResponse .= $temp;
-            $this->log($getResultsTemplateResponse);
-            // die();
-
-            // $questionSet[$count]['answer']['values']['value'] = $atsResult['overallResult']['score'];
-            break;   
-
-          case 'Overall - Pass/Fail':
-            // $this->log($atsResult['overallResult']['passed']);
-            // $questionSet[$count]['answer']['values']['value'] = $atsResult['overallResult']['passed'];
+        switch($labelName) {
+          case 'overall-pass/fail':
 
             $temp = '
                 <ws:question>
@@ -178,8 +192,101 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
 
             $getResultsTemplateResponse .= $temp;
             break;
+            
+          case 'candidatescore':
 
+            $temp = '
+                <ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$atsResult["overallResult"]["score"].'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+
+            $getResultsTemplateResponse .= $temp;
+            break;   
+
+          case 'testreporturl':
+            $temp = '
+                <ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$atsResult['overallResult']['ReportURL'].'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'cfa-percentage':
+            $temp = '
+                <ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$atsResult['cfa']['percentageScore'].'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'cfa-pass/fail':
+            $temp = '
+                <ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$atsResult['cfa']['passed'].'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'rfa-percentage':
+            $temp = '
+                <ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$atsResult['rpa']['percentageScore'].'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'rfa-pass/fail':
+            $temp = '
+                <ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$atsResult['rpa']['passed'].'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+
+            $getResultsTemplateResponse .= $temp;
+            
           default:
+            $this->log('test'.$labelName.'test');
+            $this->log($labelName);
+            $this->log(strlen($labelName));
             $this->log('!!!!!!!!!!!!!!!!! This field not integrated in our system !!!!!!!!!!!!!!!!!!! ');
             break;  
         }
@@ -187,16 +294,18 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       }
 
       $getResultsTemplateResponse .= '
-        </questions>
-      </ws:results-template>
-    </ws:getResultsTemplateResponse>
-  </soap:Body>
+          </questions>
+        </ws:results>
+      </ws:submitResults>
+   </soap:Body>
 </soap:Envelope>';      
 
-      $this->log('*************** all set for sending results ****************');
+      // $this->log('*************** all set for sending results ****************');
       // $this->log();
+
       $this->log($getResultsTemplateResponse);
-      $this->log('==================================================');
+      $this->log('=================== serve res ===============================');
+      // die();
 
       $this->AtsLog->saveATSLog($getResultsTemplateResponse, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
 
@@ -214,22 +323,62 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $response = $this->Api->callApi($url, 'POST', $resultTemplateResponse);
 
       $this->log($response);
+
       $this->log('==========================================');
-      // die();
-      $responseData = json_decode($response['data'], 1);
+
+
+      if($response['http_code'] != 200) {        
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== why =========');
+        die();
+      }
+
+      $this->log('After *******************');
+
+      $responseData = $response['data'];
       $this->log($responseData);
-      $this->log(gettype($responseData));
 
       // die();
+      $responseData = $this->replaceAmpersandByHtmlEntityCode($responseData);
+      $this->log('testoooo 888888**************');
+      $this->log($responseData);
 
-      if(!$responseData['success']) {
+      
+      try {
+        $xmlObject = Xml::build($responseData);
+      } catch(Exception $e) {
+        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== why not=========');
+        die();
+      }
+
+
+      // $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $xmlArray = Xml::toArray($xmlObject);
+
+      $this->log('======================================');
+      $this->log($xmlArray);
+
+ 
+      $sendResultResposnse = $xmlArray['Envelope']['env:Body']['ns2:submitResultsResponse']['ns2:operation-result']['success'];
+
+      // die();
+      // $responseData = json_decode($response['data'], 1);
+      // $this->log($responseData);
+      // $this->log(gettype($responseData));
+
+      // // die();
+
+      if(!$sendResultResposnse['success']) {
         $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
         die();
       }
       $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
       $this->AtsAssessmentCandidate->setResultAcceptedFlag($assessmentCandidateId, $assessmentType, 1);
 
+
       $this->log('************ result response saved successfully ************');
+      die();
       $this->log($response);
 
       
@@ -262,7 +411,5 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('ASSESSMENT_STATUS_ACKNOWLEDGEMENT'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
 
       $this->log('========================Done!!!!!!!!!!!!!');
-
-
-      // return $response;
+      
     }

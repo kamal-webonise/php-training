@@ -1,5 +1,4 @@
 public function generateResultForLumesse($atsResult, $assessmentCandidateId, $timeOut = 30) {
-
       $this->loadModel('Ats.AtsAssessmentCandidate');
       $this->loadModel('Ats.AtsLog');
       $this->loadModel('Ats.AtsCredential');
@@ -45,7 +44,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
 
       $resultTemplateResponse = $this->Api->lumesseResultTemplate($systemName, $atsCredentials);
 
-      $this->AtsLog->saveATSLog($resultTemplateResponse, 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsLog->saveATSLog($resultTemplateResponse, 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE'), $atsResult['assessment_candidate_id'], 1, $assessmentType, 0);
  
       $additionalParameter = json_decode($atsCredentials['AtsCredential']['additional_parameters']);
 
@@ -59,7 +58,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $response = $this->Api->callApi($url, 'POST', $resultTemplateResponse);
 
       if($response['http_code'] != 200) {        
-        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 2, $assessmentType, 0);
         $this->log('======== http status not 200 for GET_RESULT_TEMPLATE_RESPONSE =========');
         die();
       }
@@ -70,12 +69,12 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       try {
         $xmlObject = Xml::build($responseData);
       } catch(Exception $e) {
-        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 2, $assessmentType, 1);
         $this->log('======== cannot create xmlObject for GET_RESULT_TEMPLATE_RESPONSE =========');
         die();
       }
 
-      $this->AtsLog->saveATSLog($response['data'], 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsLog->saveATSLog($response['data'], 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 1, $assessmentType, 0);
 
       $xmlArray = Xml::toArray($xmlObject);
 
@@ -157,9 +156,9 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
    </soap:Body>
 </soap:Envelope>';
 
-      $this->AtsLog->saveATSLog($getResultsTemplateResponse, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsLog->saveATSLog($getResultsTemplateResponse, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT'), $atsResult['assessment_candidate_id'], 1, $assessmentType, 0);
 
-      if($atsExtraData['isFromConsole']) {
+      if($atsExtraData['isFromConsole']) { 
         $url = $additionalParameter->assessment_provider_endpoint.'/submitResults?api_key='.$atsCredentials['AtsCredential']['api_key'];
       }
 
@@ -170,7 +169,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $response = $this->Api->callApi($url, 'POST', $resultTemplateResponse);
 
       if($response['http_code'] != 200) {        
-        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 2, $assessmentType, 0);
         $this->log('======== http status not 200 for REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE =========');
         die();
       }
@@ -183,7 +182,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       try {
         $xmlObject = Xml::build($responseData);
       } catch(Exception $e) {
-        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 2, $assessmentType, 1);
         $this->log('======== cannot create xmlObject for GET_RESULT_TEMPLATE_RESPONSE =========');
         die();
       }
@@ -193,10 +192,10 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $sendResultResponse = $xmlArray['Envelope']['env:Body']['ns2:submitResultsResponse']['ns2:operation-result']['success'];
 
       if(!$sendResultResponse) {
-        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 2, $assessmentType, 0);
         die();
       }
-      $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 1, $assessmentType, 0);
       $this->AtsAssessmentCandidate->setResultAcceptedFlag($assessmentCandidateId, $assessmentType, 1);
       
       $this->log('************** submit status code start *******************');
@@ -204,7 +203,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
       $status = ucfirst($atsResult['assessmentStatus']);
       $submitStatusXML = $this->Api->submitStatus($talentLinkId, $atsCredentials, $status);
       
-      $this->AtsLog->saveATSLog($submitStatusXML, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_STATUS_REQUEST'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsLog->saveATSLog($submitStatusXML, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_STATUS_REQUEST'), $atsResult['assessment_candidate_id'], 1, $assessmentType, 0);
 
       if($atsExtraData['isFromConsole']) {
         $url = $additionalParameter->assessment_provider_endpoint.'/submitStatus?api_key='.$atsCredentials['AtsCredential']['api_key'];
@@ -212,7 +211,7 @@ public function generateResultForLumesse($atsResult, $assessmentCandidateId, $ti
 
       $response = $this->Api->callApi($url, 'POST', $submitStatusXML);
 
-      $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('ASSESSMENT_STATUS_ACKNOWLEDGEMENT'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('ASSESSMENT_STATUS_ACKNOWLEDGEMENT'), $atsResult['assessment_candidate_id'], 1, $assessmentType, 0);
 
       $this->log('======================== Assessement Done !!!!!!!!!!!!');
     }

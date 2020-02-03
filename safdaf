@@ -1,0 +1,230 @@
+public function generateResultForLumesse($atsResult, $assessmentCandidateId, $timeOut = 30) {
+
+      $this->loadModel('Ats.AtsAssessmentCandidate');
+      $this->loadModel('Ats.AtsLog');
+      $this->loadModel('Ats.AtsCredential');
+      $this->loadModel('Users.Candidate');
+
+      $this->cfaCandidateId = $cfaCandidateId = (isset($atsResult['cfa']['cfa_candidate_id']) && !empty($atsResult['cfa']['cfa_candidate_id'])) ? $atsResult['cfa']['cfa_candidate_id']: false;
+      $this->rpaCandidateId = $rpaCandidateId = (isset($atsResult['rpa']['rpa_candidate_id']) && !empty($atsResult['rpa']['rpa_candidate_id'])) ? $atsResult['rpa']['rpa_candidate_id']: false;
+      
+      $atsAssessmentResult = $this->AtsAssessmentCandidate->getATSAssessmentData($atsResult['certificateNumber']);
+      $atsExtraData = json_decode($atsAssessmentResult['AtsAssessmentCandidate']['ats_extra_data'], true);
+
+      $assessmentType = $atsResult['assessmentType'] === self::RPA_ASSESSMENT_TYPE ? self::JOB_ROLE_ASSESSMENT_TYPE : $atsAssessmentResult['AtsAssessmentCandidate']['type'];
+
+      $atsCredentials = $this->AtsCredential->getATSCredentials($this->organisationId, $this->productId, $this->atsId);
+
+      $cfaPercentage = $rpaPercentage = null;
+
+      $candidateRedirectionURL = array('plugin' => 'crpts', 'controller' => 'reports', 'action' => 'ats_reports');
+      array_push($candidateRedirectionURL, $atsResult['certificateNumber']);
+      $reportUrl = Configure::read('full_base_url') . Router::url($candidateRedirectionURL, true);
+      $atsResult['overallResult']['ReportURL'] = $reportUrl;
+
+      if ($atsAssessmentResult['AtsAssessmentCandidate']['type'] == CFA_ASSESSMENT_TYPE) {
+          $cfaPercentage = $this->Candidate->CfaCandidate->cfaPercentage($assessmentCandidateId);
+          $rpaPercentage = 'NA';
+      }
+
+      if ($atsAssessmentResult['AtsAssessmentCandidate']['type'] == JOB_ROLES_ASSESSMENT_TYPE) {
+        $candidateResult = $this->AtsAssessmentCandidate->JobRolesCandidate->getJobRoleCandidatesData($assessmentCandidateId);
+        $cfaPercentage = $candidateResult['JobRolesCandidate']['has_cfa'] ? $this->Candidate->CfaCandidate->cfaPercentageByJr($assessmentCandidateId, $this->cfaCandidateId) : 'NA';
+        $rpaPercentage = $this->Candidate->RpaCandidate->rpaPercentage($assessmentCandidateId, $this->rpaCandidateId);
+      }
+
+      $atsResult['cfa']['percentageScore'] = $cfaPercentage;
+      $atsResult['rpa']['percentageScore'] = $rpaPercentage;
+      $requiredIdsForAssessment = $this->idsForAssessment();
+
+      $atsResult['overallResult']['percentageScore'] = $this->Api->calculateOverallPercentage($requiredIdsForAssessment, $atsResult);
+
+      $talentLinkId = $atsAssessmentResult['AtsAssessmentCandidate']['ats_transactId'];
+      $additionalParameter = json_decode($atsCredentials['AtsCredential']['additional_parameters']);
+      $systemName = $additionalParameter->system_name;
+
+      $resultTemplateResponse = $this->Api->lumesseResultTemplate($systemName, $atsCredentials);
+
+      $this->AtsLog->saveATSLog($resultTemplateResponse, 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+ 
+      $additionalParameter = json_decode($atsCredentials['AtsCredential']['additional_parameters']);
+
+      if($atsExtraData['isFromConsole']) { // change the whole condition 
+        // fix the 1 wali condition
+        $url = $additionalParameter->assessment_provider_endpoint.'/lumesseResultTemplateResponse?api_key='.$atsCredentials['AtsCredential']['api_key'];
+      } else {
+        $url = $additionalParameter->assessment_provider_endpoint.'?api_key='.$atsCredentials['AtsCredential']['api_key'];
+      }
+
+      $response = $this->Api->callApi($url, 'POST', $resultTemplateResponse);
+
+      if($response['http_code'] != 200) {        
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== http status not 200 for GET_RESULT_TEMPLATE_RESPONSE =========');
+        die();
+      }
+
+      $responseData = $response['data'];
+      $responseData = $this->replaceAmpersandByHtmlEntityCode($responseData);
+      
+      try {
+        $xmlObject = Xml::build($responseData);
+      } catch(Exception $e) {
+        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== cannot create xmlObject for GET_RESULT_TEMPLATE_RESPONSE =========');
+        die();
+      }
+
+      $this->AtsLog->saveATSLog($response['data'], 0, $this->atsId, Configure::read('GET_RESULT_TEMPLATE_RESPONSE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+
+      $xmlArray = Xml::toArray($xmlObject);
+
+      $questionSet = empty($xmlArray['Envelope']['soap:Body']) ? $xmlArray['Envelope']['env:Body']['ns2:getResultsTemplateResponse']['ns2:results-template']['questions']['ns2:question'] : $xmlArray['Envelope']['soap:Body']['ws:getResultsTemplateResponse']['ws:results-template']['questions']['ws:question'];
+
+      $count = 0;
+
+      $getResultsTemplateResponse = 
+      '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.mrted.com/">
+          <soap:Header>
+          <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+            <wsse:UsernameToken wsu:Id="UsernameToken-3" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+            <wsse:Username>'.$atsCredentials['AtsCredential']['ats_username'].'</wsse:Username>
+            <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText">'.$atsCredentials['AtsCredential']['ats_password'].'</wsse:Password>
+            </wsse:UsernameToken>
+            </wsse:Security>
+          </soap:Header> 
+           <soap:Body>
+              <ws:submitResults>
+                 <ws:request-id>'.$atsAssessmentResult['AtsAssessmentCandidate']['ats_transactId'].'</ws:request-id>
+                 <ws:results>
+                    <questions>';
+
+      foreach ($questionSet as $key => $value) {
+        $labelName = strtolower($value['label']);
+        $labelName = preg_replace('/[\t\n\r\s]+/', '', $labelName);
+        $labelName = str_replace(' ', '', $labelName);
+
+        switch($labelName) {
+          case 'overall-pass/fail':
+
+            $temp = $this->getResultFieldTemplate($value, $atsResult['overallResult']['passed']);
+            $getResultsTemplateResponse .= $temp;
+            break;
+            
+          case 'candidatescore':
+
+            $temp = $this->getResultFieldTemplate($value, $atsResult["overallResult"]["score"]);
+            $getResultsTemplateResponse .= $temp;
+            break;   
+
+          case 'testreporturl':
+            $temp = $this->getResultFieldTemplate($value, $atsResult['overallResult']['ReportURL']);
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'cfa-percentage':
+            $temp = $this->getResultFieldTemplate($value, $atsResult['cfa']['percentageScore']);
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'cfa-pass/fail':
+            $temp = $this->getResultFieldTemplate($value, $atsResult['cfa']['passed']);
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'rfa-percentage':
+            $temp = $this->getResultFieldTemplate($value, $atsResult['rpa']['percentageScore']);
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          case 'rfa-pass/fail':
+            $temp = $this->getResultFieldTemplate($value, $atsResult['rpa']['passed']);
+            $getResultsTemplateResponse .= $temp;
+            break;
+
+          default:
+            $this->log($labelName);
+            $this->log('!!!!!!!!!!!!!!!!! This field not integrated in our system !!!!!!!!!!!!!!!!!!! ');
+            break;  
+        }
+        $count += 1;
+      }
+
+      $getResultsTemplateResponse .= '
+          </questions>
+        </ws:results>
+      </ws:submitResults>
+   </soap:Body>
+</soap:Envelope>';
+
+      $this->AtsLog->saveATSLog($getResultsTemplateResponse, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+
+      if($atsExtraData['isFromConsole']) {
+        $url = $additionalParameter->assessment_provider_endpoint.'/submitResults?api_key='.$atsCredentials['AtsCredential']['api_key'];
+      }
+
+      $this->log('=========== URL ==================');
+      $this->log($url);
+      $this->log($getResultsTemplateResponse);
+
+      $response = $this->Api->callApi($url, 'POST', $resultTemplateResponse);
+
+      if($response['http_code'] != 200) {        
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== http status not 200 for REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE =========');
+        die();
+      }
+
+      $responseData = $response['data'];
+      $this->log($responseData);
+
+      $responseData = $this->replaceAmpersandByHtmlEntityCode($responseData);
+      
+      try {
+        $xmlObject = Xml::build($responseData);
+      } catch(Exception $e) {
+        $this->At->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        $this->log('======== cannot create xmlObject for GET_RESULT_TEMPLATE_RESPONSE =========');
+        die();
+      }
+
+      $xmlArray = Xml::toArray($xmlObject);
+
+      $sendResultResponse = $xmlArray['Envelope']['env:Body']['ns2:submitResultsResponse']['ns2:operation-result']['success'];
+
+      if(!$sendResultResponse) {
+        $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 1);
+        die();
+      }
+      $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_RESULT_ACKNOWLEDGE'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+      $this->AtsAssessmentCandidate->setResultAcceptedFlag($assessmentCandidateId, $assessmentType, 1);
+      
+      $this->log('************** submit status code start *******************');
+      
+      $status = ucfirst($atsResult['assessmentStatus']);
+      $submitStatusXML = $this->Api->submitStatus($talentLinkId, $atsCredentials, $status);
+      
+      $this->AtsLog->saveATSLog($submitStatusXML, 0, $this->atsId, Configure::read('REQUEST_FOR_ASSESSMENT_STATUS_REQUEST'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+
+      if($atsExtraData['isFromConsole']) {
+        $url = $additionalParameter->assessment_provider_endpoint.'/submitStatus?api_key='.$atsCredentials['AtsCredential']['api_key'];
+      }
+
+      $response = $this->Api->callApi($url, 'POST', $submitStatusXML);
+
+      $this->AtsLog->saveATSLog(json_encode($response), 0, $this->atsId, Configure::read('ASSESSMENT_STATUS_ACKNOWLEDGEMENT'), $atsResult['assessment_candidate_id'], 0, $assessmentType, 0);
+
+      $this->log('======================== Assessement Done !!!!!!!!!!!!');
+    }
+
+    public function getResultFieldTemplate($value, $fieldValue) {
+      return '<ws:question>
+                  <id>'.$value["id"].'</id>
+                  <label>'.$value["label"].'</label>
+                  <answer>
+                    <values>
+                      <value>'.$fieldValue.'</value>
+                    </values>
+                  </answer>
+                </ws:question>';
+    }
